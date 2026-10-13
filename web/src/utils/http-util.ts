@@ -16,29 +16,30 @@ export class ApiError extends Error {
 export async function fetchApi<T = unknown>(
   input: string | URL,
   init?: RequestInit,
-): Promise<T | undefined> {
-  try {
-    const res = await fetch(input, {
-      ...init,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-    if (!res.ok) {
-      const errorResponse = (await res.json()) as {
-        error: string;
-        message: string;
-      };
-
-      throw new ApiError(errorResponse.error, errorResponse.message);
-    }
-
-    const response = (await res.json()) as ApiResponse<T>;
-    return response.data;
-  } catch (err) {
-    if (err instanceof Error) {
-      throw new Error(err.message);
-    }
+): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (!(init?.body instanceof FormData) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
+  const res = await fetch(input, {
+    ...init,
+    credentials: "include",
+    headers,
+  });
+  if (!res.ok) {
+    const fallback = `Request failed (${res.status})`;
+    const errorResponse = await res.json().catch(() => null);
+    const message =
+      errorResponse?.data?.message ??
+      errorResponse?.message?.data?.message ??
+      errorResponse?.message ??
+      errorResponse?.error;
+    throw new ApiError(String(res.status), typeof message === "string" ? message : fallback);
+  }
+
+  if (res.status === 204 || res.status === 205) return undefined as T;
+  const body = await res.text();
+  if (!body.trim()) return undefined as T;
+  const response = JSON.parse(body) as ApiResponse<T>;
+  return response.data;
 }

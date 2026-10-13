@@ -10,6 +10,12 @@ type Dataset struct {
 	OrganizationID string `json:"organizationId" validate:"required"`
 }
 
+type CreateDatasetSchema struct {
+	Name          string `json:"name" validate:"required"`
+	Description   string `json:"description"`
+	RetentionDays int    `json:"retentionDays" validate:"required,min=1,max=90"`
+}
+
 type DatasetField struct {
 	Field string `json:"field"`
 	// Type is either "String" or "Numeric"

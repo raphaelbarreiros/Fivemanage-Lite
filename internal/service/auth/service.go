@@ -46,7 +46,7 @@ func (r *Service) CreateAdminUser() error {
 	ctx := context.Background()
 
 	user := new(database.User)
-	err = r.db.NewSelect().Model(user).Limit(1).Scan(ctx)
+	err = r.db.NewSelect().Model(user).Where("is_admin = ?", true).Limit(1).Scan(ctx)
 	if err != nil {
 		// todo: create a database.selectError func
 		if errors.Is(err, sql.ErrNoRows) {
@@ -56,7 +56,7 @@ func (r *Service) CreateAdminUser() error {
 		}
 	}
 
-	// it can only be one admin
+	// Provision the bootstrap administrator only when none exists.
 	if user.IsAdmin {
 		return nil
 	}

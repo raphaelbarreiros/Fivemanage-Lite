@@ -8,7 +8,7 @@ interface LogoutButtonProps {
 }
 
 export function LogoutButton({ variant = "outline", size = "default", className }: LogoutButtonProps) {
-  const { logout } = useLogout();
+  const { logout, isPending } = useLogout();
 
   return (
     <Button 
@@ -16,6 +16,7 @@ export function LogoutButton({ variant = "outline", size = "default", className 
       size={size} 
       className={className}
       onClick={logout}
+      disabled={isPending}
     >
       Logout
     </Button>

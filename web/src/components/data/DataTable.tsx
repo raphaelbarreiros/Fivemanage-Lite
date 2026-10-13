@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useLocation, useSearchParams, useNavigate } from "react-router";
+import { useSearchParams } from "react-router";
 import { Asset } from "@/typings/asset";
 //import { DataDeleteDialog } from "./DataDeleteDialog";
 

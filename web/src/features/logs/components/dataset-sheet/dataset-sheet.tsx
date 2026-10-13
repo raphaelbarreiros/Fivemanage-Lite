@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/button";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   Form,
   FormControl,
@@ -12,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -29,6 +32,8 @@ interface DatasetSheetProps {
 }
 
 export default function DatasetSheet({ organizationId }: DatasetSheetProps) {
+  const [open, setOpen] = useState(false);
+  const submitting = useRef(false);
   const formMethods = useForm<CreateDatasetSchema>({
     defaultValues: {
       name: "",
@@ -40,28 +45,47 @@ export default function DatasetSheet({ organizationId }: DatasetSheetProps) {
     resolver: zodResolver(createDatasetSchemaWithMaxRetention(90)),
   });
 
-  const { mutate } = useCreateDataset(organizationId);
+  const { mutateAsync, isPending } = useCreateDataset(organizationId);
 
-  function onSubmit(data: CreateDatasetSchema) {
-    mutate(data);
+  async function onSubmit(data: CreateDatasetSchema) {
+    if (submitting.current || !organizationId) return;
+    submitting.current = true;
+    try {
+      await mutateAsync(data);
+      setOpen(false);
+      formMethods.reset();
+      toast.success(`Dataset "${data.name}" created`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create dataset");
+    } finally {
+      submitting.current = false;
+    }
   }
 
   return (
-    <Sheet>
+    <Sheet
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (submitting.current) return;
+        setOpen(nextOpen);
+        if (!nextOpen) formMethods.reset();
+      }}
+    >
       <SheetTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" disabled={!organizationId}>
           Create
         </Button>
       </SheetTrigger>
       <SheetContent className="min-w-[20%]">
         <SheetHeader>
           <SheetTitle>Create dataset</SheetTitle>
+          <SheetDescription>Create a dataset to organize your logs.</SheetDescription>
         </SheetHeader>
 
         <div className="mt-4 px-4">
           <Form {...formMethods}>
             <form
-              className="space-y-4"
+              className="flex flex-col gap-4"
               onSubmit={formMethods.handleSubmit(onSubmit)}
             >
               <FormField
@@ -72,6 +96,7 @@ export default function DatasetSheet({ organizationId }: DatasetSheetProps) {
                     <FormLabel>*Name</FormLabel>
                     <FormControl>
                       <Input
+                        disabled={isPending}
                         autoComplete="off"
                         autoCapitalize="none"
                         type="text"
@@ -91,6 +116,7 @@ export default function DatasetSheet({ organizationId }: DatasetSheetProps) {
                     <FormLabel>Description</FormLabel>
                     <FormControl>
                       <Input
+                        disabled={isPending}
                         autoComplete="off"
                         autoCapitalize="none"
                         type="text"
@@ -110,6 +136,7 @@ export default function DatasetSheet({ organizationId }: DatasetSheetProps) {
                     <FormLabel>*Retention Days</FormLabel>
                     <FormControl>
                       <Input
+                        disabled={isPending}
                         type="number"
                         max={90}
                         {...field}
@@ -130,8 +157,8 @@ export default function DatasetSheet({ organizationId }: DatasetSheetProps) {
                 )}
               />
 
-              <Button type="submit" disabled={false}>
-                Create
+              <Button type="submit" disabled={isPending || !organizationId}>
+                {isPending ? "Creating…" : "Create"}
               </Button>
             </form>
           </Form>

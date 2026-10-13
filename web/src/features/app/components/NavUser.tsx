@@ -42,7 +42,7 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
-  const { logout } = useLogout();
+  const { logout, isPending } = useLogout();
   const navigate = useNavigate();
 
   return (
@@ -95,7 +95,7 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout}>
+            <DropdownMenuItem onClick={logout} disabled={isPending}>
               <LogOut />
               Logout
             </DropdownMenuItem>

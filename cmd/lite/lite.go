@@ -107,10 +107,10 @@ var rootCmd = &cobra.Command{
 		authService := auth.NewService(store)
 		tokenService := token.NewService(store)
 		fileService := file.NewService(store, storageLayer)
-		organizationService := organization.NewService(store, clickhouseClient)
 		memberService := member.NewService(store)
 		datsetService := dataset.NewService(store, clickhouseClient)
-		logService := log.NewService(store, clickhouseClient, datsetService)
+		organizationService := organization.NewService(store, clickhouseClient, datsetService, storageLayer)
+		logService := log.NewService(store, clickhouseClient)
 		systemService := system.NewService(Version, viper.GetString("bucket-domain"))
 
 		memcache := cache.NewMemcache(5 * time.Minute)

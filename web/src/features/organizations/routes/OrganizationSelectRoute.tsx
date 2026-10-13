@@ -12,9 +12,9 @@ import {
 import { Button } from "@/components/ui/button";
 
 export function OrganizationSelectRoute() {
-  const { data, isLoading } = useOrganizations();
+  const { data, isLoading, error, refetch } = useOrganizations();
   const session = useSession();
-  const { logout } = useLogout();
+  const { logout, isPending: isLoggingOut } = useLogout();
   const orgCount = data?.length || 0;
   const navigate = useNavigate();
 
@@ -24,6 +24,15 @@ export function OrganizationSelectRoute() {
 
   if (isLoading) {
     return <div>Loading...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4 p-6">
+        <p role="alert">{error.message}</p>
+        <Button onClick={() => refetch()}>Try again</Button>
+      </div>
+    );
   }
 
   if (!data || data.length === 0) {
@@ -80,6 +89,7 @@ export function OrganizationSelectRoute() {
             variant="outline"
             size="sm"
             onClick={logout}
+            disabled={isLoggingOut}
             className="gap-1.5"
           >
             <LogOut className="h-4 w-4 mr-2" />

@@ -16,6 +16,7 @@ func RegisterRoutes(group *echo.Group, datasetService *dataset.Service) {
 
 	group.POST("/:organizationId/dataset", h.createDatasetHandler)
 	group.GET("/:organizationId/dataset", h.listDatasetsHandler)
+	group.DELETE("/:organizationId/dataset/:datasetId", h.deleteDatasetHandler)
 	group.GET("/:organizationId/dataset/:datasetId/fields", h.listDatasetFieldsHandler)
 	group.POST("/:organizationId/dataset/:datasetId/logs", h.queryDatasetLogsHandler)
 	group.GET("/:organizationId/dataset/:datasetId/logs/:logId", h.getDatasetLogHandler)

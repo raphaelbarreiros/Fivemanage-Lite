@@ -46,7 +46,7 @@ func (r *handler) getSessionHandler(c echo.Context) error {
 // @Accept       json
 // @Produce      json
 // @Param        login  body      api.LoginRequest  true  "Login Request"
-// @Success      303    {string}  string            "Redirect to /app"
+// @Success      200    {object}  httputil.ResponseData{data=string}
 // @Failure      400    {object}  httputil.ErrorResponseData
 // @Failure      403    {object}  httputil.ErrorResponseData
 // @Router       /dash/auth/login [post]
@@ -75,7 +75,7 @@ func (r *handler) loginHandler(c echo.Context) error {
 
 	sessionCookie := r.authService.CreateSessionCookie(sessionID)
 	c.SetCookie(sessionCookie)
-	return c.Redirect(http.StatusSeeOther, "/app")
+	return cc.JSON(http.StatusOK, httputil.Response("Login successful"))
 }
 
 // logoutHandler godoc

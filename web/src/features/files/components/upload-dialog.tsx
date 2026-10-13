@@ -18,6 +18,9 @@ import {
 import { useCallback, useEffect, useReducer, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useUploadFile } from "../api/useUploadFile";
+import { useQueryClient } from "@tanstack/react-query";
+import { useParams } from "react-router";
+import { toast } from "sonner";
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500mb
 
@@ -79,6 +82,9 @@ function reducer(state: UploadState, action: FileAction): UploadState {
 export function UploadDialog() {
   const { mutateAsync } = useUploadFile();
   const [isOpen, setIsOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const queryClient = useQueryClient();
+  const { organizationId } = useParams();
 
   const [uploadState, dispatch] = useReducer(reducer, {
     files: [],
@@ -95,6 +101,7 @@ export function UploadDialog() {
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     maxSize: MAX_FILE_SIZE,
+    disabled: isUploading,
     onDrop,
     noClick: true,
     noKeyboard: true,
@@ -108,45 +115,55 @@ export function UploadDialog() {
       }
     };
 
-    if (isOpen) {
+    if (isOpen && !isUploading) {
       window.addEventListener("paste", handlePaste);
     }
 
     return () => {
       window.removeEventListener("paste", handlePaste);
     };
-  }, [isOpen, onDrop]);
+  }, [isOpen, isUploading, onDrop]);
 
   const handleUpload = async () => {
-    const uploadPromises = uploadState.files.map(async (file) => {
-      if (file.status === FileUploadStatus.QUEUED) {
+    if (isUploading) return;
+    setIsUploading(true);
+    const results = await Promise.all(uploadState.files.map(async (file) => {
+      if (file.status === FileUploadStatus.SUCCESS) return true;
+      dispatch({
+        type: "UPDATE_FILE_STATUS",
+        id: file.id,
+        status: FileUploadStatus.PENDING,
+      });
+      try {
+        await mutateAsync(file.file);
         dispatch({
           type: "UPDATE_FILE_STATUS",
           id: file.id,
-          status: FileUploadStatus.PENDING,
+          status: FileUploadStatus.SUCCESS,
         });
-
-        try {
-          await mutateAsync(file.file);
-          dispatch({
-            type: "UPDATE_FILE_STATUS",
-            id: file.id,
-            status: FileUploadStatus.SUCCESS,
-          });
-        } catch {
-          dispatch({
-            type: "UPDATE_FILE_STATUS",
-            id: file.id,
-            status: FileUploadStatus.ERROR,
-          });
-        }
+        return true;
+      } catch (error) {
+        dispatch({
+          type: "UPDATE_FILE_STATUS",
+          id: file.id,
+          status: FileUploadStatus.ERROR,
+        });
+        toast.error(`${file.file.name}: ${error instanceof Error ? error.message : "Upload failed"}`);
+        return false;
       }
-    });
-
-    await Promise.all(uploadPromises);
+    }));
+    setIsUploading(false);
+    void queryClient.invalidateQueries({ queryKey: ["storage", organizationId] });
+    void queryClient.invalidateQueries({ queryKey: ["organization-stats", organizationId] });
+    if (results.every(Boolean)) {
+      toast.success("Files uploaded");
+      setIsOpen(false);
+      dispatch({ type: "RESET" });
+    }
   };
 
   const handleDialogOpenChange = (open: boolean) => {
+    if (isUploading) return;
     setIsOpen(open);
     if (!open) {
       dispatch({ type: "RESET" });
@@ -183,7 +200,7 @@ export function UploadDialog() {
                 SVG, PNG, JPG or GIF (max. 500MB)
               </p>
             </div>
-            <Button type="button" onClick={open} variant="secondary" size="sm">
+            <Button type="button" onClick={open} variant="secondary" size="sm" disabled={isUploading}>
               Select files
             </Button>
           </div>
@@ -246,7 +263,7 @@ export function UploadDialog() {
                       onClick={() =>
                         dispatch({ type: "REMOVE_FILE", id: fileUpload.id })
                       }
-                      disabled={fileUpload.status === FileUploadStatus.PENDING}
+                      disabled={isUploading}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -258,7 +275,7 @@ export function UploadDialog() {
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setIsOpen(false)}>
+          <Button variant="outline" onClick={() => handleDialogOpenChange(false)} disabled={isUploading}>
             Cancel
           </Button>
           <Button
@@ -268,9 +285,7 @@ export function UploadDialog() {
               uploadState.files.every(
                 (f) => f.status === FileUploadStatus.SUCCESS,
               ) ||
-              uploadState.files.some(
-                (f) => f.status === FileUploadStatus.PENDING,
-              )
+              isUploading
             }
           >
             Upload{" "}

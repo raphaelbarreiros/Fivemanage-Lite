@@ -20,7 +20,8 @@ import { type TokenParams, tokenSchema } from "@/typings/token";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { useCreateToken } from "../api/useCreateToken";
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check, Copy, KeyRound } from "lucide-react";
@@ -29,10 +30,9 @@ import { QueryKeys } from "@/typings/query";
 
 export function CreateTokenDialog() {
   const [open, setOpen] = useState(false);
-  const [isPending, startTransition] = useTransition();
   const [copied, setCopied] = useState(false);
 
-  const { mutateAsync, reset, data, isSuccess } = useCreateToken();
+  const { mutateAsync, reset, data, isSuccess, isPending } = useCreateToken();
   const form = useForm<TokenParams>({
     defaultValues: {
       type: "media",
@@ -43,14 +43,15 @@ export function CreateTokenDialog() {
 
   const queryClient = useQueryClient();
 
-  function handleOnSubmit(data: TokenParams) {
-    startTransition(async () => {
+  async function handleOnSubmit(data: TokenParams) {
+    if (isPending) return;
+    try {
       await mutateAsync(data);
-
-      startTransition(() => {
-        queryClient.invalidateQueries({ queryKey: [QueryKeys.Tokens] });
-      });
-    });
+      toast.success("Token created. Copy it before closing.");
+      void queryClient.invalidateQueries({ queryKey: [QueryKeys.Tokens] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create token");
+    }
   }
 
   function resetForm() {
@@ -63,16 +64,24 @@ export function CreateTokenDialog() {
     e.preventDefault();
   }
 
-  function copyToClipboard() {
-    if (data?.token) {
-      navigator.clipboard.writeText(data.token);
+  async function copyToClipboard() {
+    if (!data?.token) return;
+    try {
+      await navigator.clipboard.writeText(data.token);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Could not copy the token. Select and copy it manually.");
     }
   }
 
+  function handleOpenChange(next: boolean) {
+    if (isPending) return;
+    if (next) resetForm();
+    setOpen(next);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button>
           <KeyRound size={16} className="mr-2" />
@@ -83,7 +92,6 @@ export function CreateTokenDialog() {
         id="create-token-dialog"
         onInteractOutside={handleInteractOutside}
         onPointerDownOutside={handleInteractOutside}
-        onAnimationEnd={resetForm}
         className="sm:max-w-[425px]"
       >
         <DialogHeader>
@@ -107,6 +115,7 @@ export function CreateTokenDialog() {
                 variant="ghost"
                 className="absolute right-2 top-2 h-8 w-8"
                 onClick={copyToClipboard}
+                aria-label="Copy token"
               >
                 {copied ? (
                   <Check className="h-4 w-4 text-green-500" />
@@ -120,7 +129,7 @@ export function CreateTokenDialog() {
               this dialog.
             </div>
             <DialogFooter>
-              <Button onClick={() => setOpen(false)} className="w-full">
+              <Button onClick={() => handleOpenChange(false)} className="w-full">
                 I've copied it
               </Button>
             </DialogFooter>

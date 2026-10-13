@@ -1,6 +1,8 @@
 package dataset
 
 import (
+	"errors"
+
 	"github.com/fivemanage/lite/api"
 	"github.com/fivemanage/lite/internal/http/appctx"
 	"github.com/fivemanage/lite/internal/http/httputil"
@@ -16,7 +18,7 @@ import (
 // @Accept       json
 // @Produce      json
 // @Param        organizationId  path      string  true  "Organization ID"
-// @Param        data            body      api.Dataset  true  "Dataset"
+// @Param        data            body      api.CreateDatasetSchema  true  "Dataset"
 // @Success      200             {object}  httputil.ResponseData{data=api.Dataset}
 // @Failure      500             {object}  httputil.ErrorResponseData
 // @Router       /dash/{organizationId}/dataset [post]
@@ -24,10 +26,9 @@ func (r *handler) createDatasetHandler(c echo.Context) error {
 	cc := c.(*appctx.Context)
 	ctx := cc.Request().Context()
 
-	var data api.Dataset
+	var data api.CreateDatasetSchema
 	if err := validator.BindAndValidate(cc, &data); err != nil {
-		logrus.WithError(err).Error("failed to bind and validate token")
-		return cc.JSON(500, httputil.ErrorResponse(err.Error()))
+		return err
 	}
 
 	organizationID := cc.Param("organizationId")
@@ -159,4 +160,34 @@ func (r *handler) getDatasetLogHandler(c echo.Context) error {
 	}
 
 	return cc.JSON(200, httputil.Response(log))
+}
+
+// deleteDatasetHandler godoc
+// @Summary      Delete dataset
+// @Description  Permanently delete a dataset and its stored logs. Requires an organization administrator.
+// @Tags         dataset
+// @Produce      json
+// @Param        organizationId  path      string  true  "Organization ID"
+// @Param        datasetId       path      string  true  "Dataset ID"
+// @Success      204
+// @Failure      403             {object}  httputil.ErrorResponseData
+// @Failure      404             {object}  httputil.ErrorResponseData
+// @Failure      500             {object}  httputil.ErrorResponseData
+// @Router       /dash/{organizationId}/dataset/{datasetId} [delete]
+func (r *handler) deleteDatasetHandler(c echo.Context) error {
+	cc := c.(*appctx.Context)
+	user := cc.User()
+	if user == nil {
+		return echo.NewHTTPError(401, "Authentication required")
+	}
+	err := r.datasetService.Delete(cc.Request().Context(), cc.Param("organizationId"), cc.Param("datasetId"), user.ID)
+	if err != nil {
+		var httpError *echo.HTTPError
+		if errors.As(err, &httpError) {
+			return httpError
+		}
+		logrus.WithError(err).Error("failed to delete dataset")
+		return cc.JSON(500, httputil.ErrorResponse("Dataset deletion did not complete. Some stored logs may already be removed. Please retry."))
+	}
+	return cc.NoContent(204)
 }

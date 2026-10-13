@@ -10,6 +10,7 @@ import { NewOrganizationRoute } from "./features/organizations/routes/NewOrganiz
 import { OrganizationSelectRoute } from "./features/organizations/routes/OrganizationSelectRoute";
 import { Toaster } from "sonner";
 import { OrganizationTeamRoute } from "./features/organizations/routes/organization-team-route";
+import { OrganizationSettingsRoute } from "./features/organizations/routes/organization-settings-route";
 const StorageRoute = lazy(
   () => import("./features/files/routes/storage-route"),
 );
@@ -49,6 +50,7 @@ function App() {
                     <Route path=":datasetId" element={<LogsRoute />} />
                   </Route>
                   <Route path="team" element={<OrganizationTeamRoute />} />
+                  <Route path="settings" element={<OrganizationSettingsRoute />} />
                 </Route>
               </Route>
             </Route>

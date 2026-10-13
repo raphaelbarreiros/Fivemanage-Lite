@@ -12,7 +12,7 @@ type User struct {
 	Name          string `bun:"name"`
 	Username      string `bun:"username"`
 	Email         string `bun:"email"`
-	PasswordHash  string `bun:"password_hash"`
+	PasswordHash  string `bun:"password_hash" json:"-"`
 	AuthProvider  string `bun:"auth_provider"`
 	AuthID        string `bun:"auth_id"`
 	Avatar        string `bun:"avatar"`

@@ -105,12 +105,19 @@ func (c *Client) BatchWriteLogRows(ctx context.Context, logs []*Log) error {
 	if len(logs) == 0 {
 		return nil
 	}
+	if !c.Enabled || c.conn == nil {
+		return errors.New("log storage unavailable")
+	}
+	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
+		"async_insert":          0,
+		"wait_for_async_insert": 1,
+	}))
 
 	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO logs (Timestamp, DatasetId, TraceId, TeamId, Body, Attributes, RetentionDays)")
 	if err != nil {
-		fmt.Println("failed to prepare batch", err.Error())
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	for _, log := range logs {
 		err := batch.Append(
@@ -123,7 +130,6 @@ func (c *Client) BatchWriteLogRows(ctx context.Context, logs []*Log) error {
 			log.RetentionDays,
 		)
 		if err != nil {
-			fmt.Println("failed to append log to batch", err.Error())
 			return fmt.Errorf("failed to append log to batch: %w", err)
 		}
 	}

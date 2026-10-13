@@ -37,9 +37,9 @@ func (r *handler) createTokenHandler(c echo.Context) error {
 	}
 
 	data.OrganizationID = organizationID
-	apiToken, err := r.tokenService.CreateToken(ctx, &data)
+	apiToken, err := r.tokenService.CreateToken(ctx, &data, cc.User().ID)
 	if err != nil {
-		return cc.JSON(500, httputil.ErrorResponse(err.Error()))
+		return err
 	}
 
 	// we return the apiToken as a one-time thing
@@ -89,9 +89,9 @@ func (r *handler) deleteTokenHandler(c echo.Context) error {
 
 	tokenID := cc.Param("id")
 
-	err := r.tokenService.DeleteToken(ctx, tokenID)
+	err := r.tokenService.DeleteToken(ctx, cc.Param("organizationId"), tokenID, cc.User().ID)
 	if err != nil {
-		return cc.JSON(500, httputil.ErrorResponse(err.Error()))
+		return err
 	}
 
 	return cc.JSON(200, httputil.Response(nil))

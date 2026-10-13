@@ -2,76 +2,78 @@ package log
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"maps"
 	"time"
 
 	"github.com/fivemanage/lite/api"
 	"github.com/fivemanage/lite/internal/clickhouse"
 	"github.com/fivemanage/lite/internal/crypt"
-	"github.com/fivemanage/lite/internal/service/dataset"
+	datasetquery "github.com/fivemanage/lite/internal/database/query/dataset"
+	organizationquery "github.com/fivemanage/lite/internal/database/query/organization"
+	"github.com/labstack/echo/v4"
 	"github.com/uptrace/bun"
-	"github.com/uptrace/opentelemetry-go-extra/otelzap"
-	"go.uber.org/zap"
 )
 
 type Service struct {
 	db               *bun.DB
-	datasetService   *dataset.Service
 	clickhouseClient *clickhouse.Client
 }
 
-func NewService(db *bun.DB, clickhouseClient *clickhouse.Client, datasetService *dataset.Service) *Service {
+func NewService(db *bun.DB, clickhouseClient *clickhouse.Client) *Service {
 	return &Service{
 		db:               db,
-		datasetService:   datasetService,
 		clickhouseClient: clickhouseClient,
 	}
 }
 
-func (r *Service) SubmitLogs(ctx context.Context, organizationId string, datasetName string, logs []api.Log) {
-	clickhouseLogs := make([]*clickhouse.Log, 0)
-
-	dataset, err := r.datasetService.FindByName(ctx, organizationId, datasetName)
-	if err != nil {
-		otelzap.L().Error("failed to find dataset", zap.Error(err))
-		return
+func (r *Service) SubmitLogs(ctx context.Context, organizationID string, datasetName string, logs []api.Log) error {
+	if datasetName == "" {
+		datasetName = "default"
 	}
-
-	for _, log := range logs {
-		traceID, err := crypt.GeneratePrimaryKey()
+	return r.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := organizationquery.Lock(ctx, tx, organizationID, false); err != nil {
+			return err
+		}
+		dataset, err := datasetquery.SelectByNameForShare(ctx, tx, organizationID, datasetName)
 		if err != nil {
-			otelzap.L().Error("failed to generate trace id", zap.Error(err))
-			break
+			if errors.Is(err, sql.ErrNoRows) {
+				return echo.NewHTTPError(404, "Dataset not found")
+			}
+			return err
 		}
 
-		timestamp := time.Now().UTC()
-		metadata := make(map[string]string)
+		clickhouseLogs := make([]*clickhouse.Log, 0, len(logs))
+		for _, log := range logs {
+			traceID, err := crypt.GeneratePrimaryKey()
+			if err != nil {
+				return err
+			}
 
-		for k, v := range log.Metadata {
-			maps.Copy(metadata, buildLogAttributes(k, v, 0))
+			metadata := make(map[string]string)
+			for k, v := range log.Metadata {
+				maps.Copy(metadata, buildLogAttributes(k, v, 0))
+			}
+
+			logMessage := formatMessage(log.Message)
+			metadata["message"] = logMessage
+			metadata["severity"] = log.Level
+			metadata["_resource"] = log.Resource
+
+			clickhouseLogs = append(clickhouseLogs, &clickhouse.Log{
+				TraceID:       traceID,
+				Timestamp:     time.Now().UTC(),
+				TeamID:        organizationID,
+				DatasetID:     dataset.ID,
+				Body:          logMessage,
+				Attributes:    metadata,
+				RetentionDays: 30,
+			})
 		}
 
-		// fix log message because it can be silly sometimes
-		logMessage := formatMessage(log.Message)
-
-		// these should override any metadata that matches
-		metadata["message"] = logMessage
-		metadata["severity"] = log.Level
-		metadata["_resource"] = log.Resource
-
-		clickhouseLogs = append(clickhouseLogs, &clickhouse.Log{
-			TraceID:       traceID,
-			Timestamp:     timestamp,
-			TeamID:        organizationId,
-			DatasetID:     dataset.ID,
-			Body:          logMessage,
-			Attributes:    metadata,
-			RetentionDays: 30,
-		})
-	}
-
-	err = r.clickhouseClient.BatchWriteLogRows(ctx, clickhouseLogs)
-	if err != nil {
-		otelzap.L().Error("failed to submit logs to kafka", zap.Error(err))
-	}
+		// Keep both shared row locks until ClickHouse accepts the batch, so a
+		// concurrent deletion cannot finish before this in-flight write.
+		return r.clickhouseClient.BatchWriteLogRows(ctx, clickhouseLogs)
+	})
 }

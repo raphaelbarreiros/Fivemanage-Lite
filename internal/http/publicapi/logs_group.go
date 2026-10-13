@@ -1,6 +1,8 @@
 package publicapi
 
 import (
+	"errors"
+
 	"github.com/fivemanage/lite/api"
 	"github.com/fivemanage/lite/internal/auth"
 	"github.com/fivemanage/lite/internal/http/httputil"
@@ -37,6 +39,8 @@ type logsHandler struct {
 // @Param        logs                  body      []api.Log  true   "Logs to submit"
 // @Success      200                   {object}  httputil.ResponseData{data=string}
 // @Failure      401                   {object}  httputil.ErrorResponseData
+// @Failure      404                   {object}  httputil.ErrorResponseData
+// @Failure      503                   {object}  httputil.ErrorResponseData
 // @Router       /logs [post]
 func (h *logsHandler) submitLogs(c echo.Context) error {
 	ctx := c.Request().Context()
@@ -52,7 +56,14 @@ func (h *logsHandler) submitLogs(c echo.Context) error {
 		return err
 	}
 
-	h.logService.SubmitLogs(ctx, orgID, dataset, logs)
+	if err := h.logService.SubmitLogs(ctx, orgID, dataset, logs); err != nil {
+		var httpErr *echo.HTTPError
+		if errors.As(err, &httpErr) && httpErr.Code == 404 {
+			return c.JSON(404, httputil.ErrorResponse("dataset not found"))
+		}
+		return c.JSON(503, httputil.ErrorResponse("log storage unavailable"))
+	}
 
+	c.Response().Header().Set("X-Fivemanage-Ingest", "clickhouse-sync-v1")
 	return c.JSON(200, httputil.Response("ok"))
 }

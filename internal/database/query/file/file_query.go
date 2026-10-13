@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/fivemanage/lite/internal/database"
+	organizationquery "github.com/fivemanage/lite/internal/database/query/organization"
 	"github.com/uptrace/bun"
 )
 
@@ -17,9 +18,14 @@ func Create(ctx context.Context, db *bun.DB, file *database.Asset) (bun.Tx, erro
 	if err != nil {
 		return tx, err
 	}
+	if err := organizationquery.Lock(ctx, tx, file.OrganizationID, false); err != nil {
+		_ = tx.Rollback()
+		return tx, err
+	}
 
 	_, err = tx.NewInsert().Model(file).Exec(ctx)
 	if err != nil {
+		_ = tx.Rollback()
 		return tx, err
 	}
 

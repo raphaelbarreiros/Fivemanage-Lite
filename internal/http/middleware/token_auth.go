@@ -52,6 +52,13 @@ func TokenAuth(tokenService *token.Service, memcache *cache.Cache) echo.Middlewa
 					"error": "Internal server error",
 				})
 			}
+			active, err := tokenService.IsTokenActive(ctx, tokenData)
+			if err != nil {
+				return c.JSON(500, echo.Map{"error": "Token authorization check failed"})
+			}
+			if !active {
+				return c.JSON(401, echo.Map{"error": "Unauthorized: Token revoked"})
+			}
 
 			c.Set(internalauth.OrgIDContextKey, tokenData.OrganizationID)
 			c.Set("token_data", tokenData)

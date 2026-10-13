@@ -78,8 +78,11 @@ func (r *Storage) UploadFile(ctx context.Context, file io.Reader, key, contentTy
 	return nil
 }
 
-func (r *Storage) DeleteFile() error {
-	_, err := r.client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{})
+func (r *Storage) DeleteFile(ctx context.Context, key string) error {
+	_, err := r.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(r.bucket),
+		Key:    aws.String(key),
+	})
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,6 @@
 // welcome to hell
 
-import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   Cell,
   type CellContext,
@@ -39,8 +39,8 @@ import { getDatetimeQuery } from "../../utils/datetime";
 import { RawDataCell } from "./raw-data-cell";
 import { MemoTableBodyRow, TableBodyRow } from "./table-body-row";
 import { LogDataSheet } from "./log-data-sheet";
-import { useParams, useSearchParams } from "react-router";
-import { useQueryLogs } from "../../api/logs-api";
+import { useSearchParams } from "react-router";
+import { queryLogs } from "../../api/logs-api";
 import { LogsTableProvider } from "../../providers/logs-table-provider";
 import { VALID_INTERVALS } from "@/lib/constants/interval";
 import { QueryBuilder } from "../search/query-builder";
@@ -103,13 +103,6 @@ export function LogsTable({
   } = useSidebarControls();
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const params = useParams<{ organizationId: string; datasetId: string }>();
-
-  const { mutateAsync } = useQueryLogs(
-    params.organizationId as string,
-    params.datasetId as string,
-  );
-
   const selectedLevels = searchParams.get("level")!;
   const fromDate = searchParams.get("from")!;
   const toDate = searchParams.get("to")!;
@@ -244,6 +237,8 @@ export function LogsTable({
   const { data, fetchNextPage, isFetching } = useInfiniteQuery({
     queryKey: [
       "logs",
+      teamId,
+      datasetId,
       selectedLevels,
       fromDate,
       toDate,
@@ -253,12 +248,12 @@ export function LogsTable({
       quickRange,
     ],
     enabled: true,
-    queryFn: async ({ pageParam = 0 }) => {
+    queryFn: async ({ pageParam = 0, signal }) => {
       const date = getDatetimeQuery(quickRange, fromDate, toDate);
 
-      const data = await mutateAsync({
-        organizationId: params.organizationId as string,
-        datasetId: params.datasetId as string,
+      const data = await queryLogs(teamId, datasetId, {
+        organizationId: teamId,
+        datasetId,
         metadata: metadata,
         fromDate: date?.from ?? new Date().toUTCString(),
         toDate: date?.to ?? new Date().toUTCString(),
@@ -267,14 +262,13 @@ export function LogsTable({
         filter: filter,
         cursor: pageParam,
         queryMode: queryMode,
-      });
+      }, signal);
 
       return data;
     },
     initialPageParam: 0,
     getNextPageParam: (_lastGroup, groups) => groups.length,
     refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
     refetchInterval:
       refreshInterval !== "0" ? parseInt(refreshInterval) : false,
     refetchIntervalInBackground: false,

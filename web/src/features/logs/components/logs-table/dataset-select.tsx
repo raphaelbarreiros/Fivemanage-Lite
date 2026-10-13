@@ -6,7 +6,9 @@ import {
   SelectContent,
   SelectValue,
   SelectItem,
+  SelectGroup,
 } from "@/components/ui/select";
+import { DeleteDatasetDialog } from "../delete-dataset-dialog";
 
 interface DatasetSelectProps {
   teamId: string;
@@ -20,22 +22,29 @@ export function DatasetSelect({ teamId }: DatasetSelectProps) {
 
   const currentDataset = datasets?.find((d) => d.id === params.datasetId);
 
-  function handleChange(value: string) {
-    navigate(`/logs/${teamId}/${value}`);
-  }
 
   return (
-    <Select value={currentDataset?.id} onValueChange={handleChange}>
-      <SelectTrigger className="min-w-[180px] text-xs">
-        <SelectValue placeholder="Select a dataset" />
-      </SelectTrigger>
-      <SelectContent>
-        {datasets?.map((dataset) => (
-          <SelectItem key={dataset.id} value={dataset.id} className="text-xs">
-            {dataset.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex items-center gap-2">
+      <Select
+        value={currentDataset?.id ?? ""}
+        onValueChange={(value) => navigate(`/logs/${teamId}/${value}`)}
+      >
+        <SelectTrigger className="min-w-[180px] text-xs">
+          <SelectValue placeholder="Select a dataset" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {datasets?.map((dataset) => (
+              <SelectItem key={dataset.id} value={dataset.id} className="text-xs">
+                {dataset.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      {currentDataset && (
+        <DeleteDatasetDialog organizationId={teamId} dataset={currentDataset} />
+      )}
+    </div>
   );
 }

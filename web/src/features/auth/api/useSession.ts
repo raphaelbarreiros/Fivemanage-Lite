@@ -1,7 +1,8 @@
 import { QueryKeys } from "@/typings/query";
 import { Session } from "@/typings/user";
 import { fetchApi } from "@/utils/http-util";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 export function useSession() {
   const { data, isPending, error } = useQuery({
@@ -17,18 +18,14 @@ export function useSession() {
 export function useLogout() {
   const queryClient = useQueryClient();
 
-  const logout = async () => {
-    try {
-      await fetchApi("/api/dash/auth/logout", {
-        method: "POST",
-      });
-    } catch (error) {
-      console.error("Logout failed:", error);
-    } finally {
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => fetchApi("/api/dash/auth/logout", { method: "POST" }),
+    onSuccess: () => {
       queryClient.clear();
       window.location.href = "/auth";
-    }
-  };
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
-  return { logout };
+  return { logout: () => { if (!isPending) mutate(); }, isPending };
 }

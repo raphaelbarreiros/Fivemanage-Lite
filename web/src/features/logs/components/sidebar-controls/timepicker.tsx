@@ -100,7 +100,6 @@ export const Timepicker = ({
   className,
   panelClassName,
   selected,
-  variant = "blue",
   onChange,
   renderHeader,
 }: TimepickerProps) => {

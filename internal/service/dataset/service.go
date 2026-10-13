@@ -2,7 +2,9 @@ package dataset
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,6 +13,8 @@ import (
 	"github.com/fivemanage/lite/internal/crypt"
 	"github.com/fivemanage/lite/internal/database"
 	datasetquery "github.com/fivemanage/lite/internal/database/query/dataset"
+	organizationquery "github.com/fivemanage/lite/internal/database/query/organization"
+	"github.com/labstack/echo/v4"
 	"github.com/uptrace/bun"
 )
 
@@ -26,9 +30,7 @@ func NewService(db *bun.DB, clickhouseClient *clickhouse.Client) *Service {
 	}
 }
 
-func (r *Service) Create(ctx context.Context, orgID string, data api.Dataset) (*api.Dataset, error) {
-	var err error
-
+func (r *Service) Create(ctx context.Context, orgID string, data api.CreateDatasetSchema) (*api.Dataset, error) {
 	datasetID, err := crypt.GeneratePrimaryKey()
 	if err != nil {
 		return nil, err
@@ -42,15 +44,23 @@ func (r *Service) Create(ctx context.Context, orgID string, data api.Dataset) (*
 		OrganizationID: orgID,
 	}
 
-	err = datasetquery.Insert(ctx, r.db, dbDataset)
+	err = r.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := organizationquery.Lock(ctx, tx, orgID, false); err != nil {
+			return err
+		}
+		return datasetquery.Insert(ctx, tx, dbDataset)
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	data.ID = dbDataset.ID
-	data.OrganizationID = orgID
-
-	return &data, nil
+	return &api.Dataset{
+		ID:             dbDataset.ID,
+		Name:           dbDataset.Name,
+		Description:    dbDataset.Description,
+		RetentionDays:  dbDataset.RetentionDays,
+		OrganizationID: orgID,
+	}, nil
 }
 
 func (r *Service) GetLog(ctx context.Context, organizationID, datasetID, logID string) (*api.DatasetLog, error) {
@@ -64,7 +74,7 @@ func (r *Service) GetLog(ctx context.Context, organizationID, datasetID, logID s
 }
 
 func (r *Service) List(ctx context.Context, organizationID string) ([]api.Dataset, error) {
-	var datasets []api.Dataset
+	datasets := make([]api.Dataset, 0)
 
 	dbDatasets, err := datasetquery.List(ctx, r.db, organizationID)
 	if err != nil {
@@ -85,25 +95,34 @@ func (r *Service) List(ctx context.Context, organizationID string) ([]api.Datase
 	return datasets, nil
 }
 
-func (r *Service) FindByName(ctx context.Context, organizationID, datasetName string) (*database.Dataset, error) {
-	var err error
+// Delete removes stored rows before metadata. On storage failure, metadata remains
+// so administrators can retry; already completed ClickHouse mutations are irreversible.
+func (r *Service) Delete(ctx context.Context, orgID, datasetID string, userID int64) error {
+	return r.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := organizationquery.Lock(ctx, tx, orgID, false); err != nil {
+			return err
+		}
+		if err := organizationquery.RequireAdmin(ctx, tx, orgID, userID); err != nil {
+			return err
+		}
+		if _, err := datasetquery.SelectForUpdate(ctx, tx, orgID, datasetID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return echo.NewHTTPError(404, "Dataset not found")
+			}
+			return err
+		}
+		if err := r.ch.DeleteDatasetData(ctx, orgID, datasetID); err != nil {
+			return err
+		}
+		// Tokens belong to the organization, not individual datasets.
+		return datasetquery.Delete(ctx, tx, orgID, datasetID)
+	})
+}
 
-	if len(datasetName) == 0 {
-		datasetName = "default"
-	}
-
-	dbDataset, err := datasetquery.SelectByName(ctx, r.db, organizationID, datasetName)
-	if err != nil {
-		return nil, err
-	}
-
-	return &database.Dataset{
-		ID:             dbDataset.ID,
-		Name:           dbDataset.Name,
-		Description:    dbDataset.Description,
-		RetentionDays:  dbDataset.RetentionDays,
-		OrganizationID: dbDataset.OrganizationID,
-	}, nil
+// DeleteOrganizationData also removes orphaned rows. The caller must hold an
+// exclusive organization row lock until its metadata deletion transaction commits.
+func (r *Service) DeleteOrganizationData(ctx context.Context, orgID string) error {
+	return r.ch.DeleteOrganizationData(ctx, orgID)
 }
 
 func (r *Service) ListFields(ctx context.Context, organizationID, datasetID string) ([]api.DatasetField, error) {

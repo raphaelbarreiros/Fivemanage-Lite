@@ -13,7 +13,8 @@ import { Trash } from "lucide-react";
 import { useDeleteToken } from "../api/useDeleteToken";
 import { useQueryClient } from "@tanstack/react-query";
 import { QueryKeys } from "@/typings/query";
-import { useTransition } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface DeleteTokenDialogProps {
   tokenId: number;
@@ -22,27 +23,29 @@ interface DeleteTokenDialogProps {
 export function DeleteTokenDialog(props: DeleteTokenDialogProps) {
   const { tokenId } = props;
 
-  const [isPending, startTransition] = useTransition();
-
+  const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
-  const { mutateAsync } = useDeleteToken();
+  const { mutateAsync, isPending } = useDeleteToken();
 
   async function handleDelete() {
-    startTransition(async () => {
+    if (isPending) return;
+    try {
       await mutateAsync(tokenId);
-
-      startTransition(() => {
-        queryClient.invalidateQueries({ queryKey: [QueryKeys.Tokens] });
-      });
-    });
+      setOpen(false);
+      toast.success("Token deleted");
+      void queryClient.invalidateQueries({ queryKey: [QueryKeys.Tokens] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete token");
+    }
   }
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={(next) => !isPending && setOpen(next)}>
       <DialogTrigger asChild>
         <Button
           size="icon"
           variant="ghost"
+          aria-label="Delete token"
           className="h-8 w-8 text-muted-foreground hover:text-destructive transition-colors"
         >
           <Trash size={16} />
@@ -58,7 +61,7 @@ export function DeleteTokenDialog(props: DeleteTokenDialogProps) {
         </DialogHeader>
         <DialogFooter className="mt-4">
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline" disabled={isPending}>Cancel</Button>
           </DialogClose>
           <Button
             variant="destructive"

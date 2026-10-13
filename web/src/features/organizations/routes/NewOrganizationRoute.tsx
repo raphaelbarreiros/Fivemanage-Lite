@@ -17,7 +17,7 @@ import {
 } from "@/typings/organizations";
 
 export function NewOrganizationRoute() {
-  const { mutate } = useCreateOrganization();
+  const { mutate, isPending } = useCreateOrganization();
 
   const formMethods = useForm<CreateOrganizationSchema>({
     defaultValues: {
@@ -27,7 +27,7 @@ export function NewOrganizationRoute() {
   });
 
   function handleCreateOrganization(data: CreateOrganizationSchema) {
-    mutate(data);
+    if (!isPending) mutate(data);
   }
 
   return (
@@ -50,7 +50,7 @@ export function NewOrganizationRoute() {
                     Organization Name<span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Input {...field} />
+                    <Input {...field} disabled={isPending} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -58,8 +58,8 @@ export function NewOrganizationRoute() {
             />
           </div>
           <div className="flex items-center justify-end space-x-4 mt-4">
-            <Button size="sm" type="submit">
-              Create organization
+            <Button size="sm" type="submit" disabled={isPending}>
+              {isPending ? "Creating..." : "Create organization"}
             </Button>
           </div>
         </form>
