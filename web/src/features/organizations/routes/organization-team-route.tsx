@@ -29,6 +29,20 @@ function OrganizationTeam({ organizationId }: { organizationId: string }) {
   const queryClient = useQueryClient();
   const [addMode, setAddMode] = useState<"existing" | "new" | null>(null);
   const [change, setChange] = useState<AccessChange | null>(null);
+  const [passwordMember, setPasswordMember] = useState<OrganizationMember | null>(null);
+  const passwordForm = useForm({ defaultValues: { password: "", confirmation: "" } });
+  const changePassword = useMutation({
+    mutationFn: ({ memberId, password }: { memberId: number; password: string }) =>
+      fetchApi<void>(`/api/dash/organization/${organizationId}/member/${memberId}/password`, {
+        method: "PATCH", body: JSON.stringify({ password }),
+      }),
+    onSuccess: () => {
+      setPasswordMember(null);
+      passwordForm.reset();
+      toast.success("Password changed. Existing sessions have been signed out.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
   const members = useQuery({
     queryKey: ["organization-members", organizationId],
     queryFn: () => fetchApi<OrganizationMember[]>(`/api/dash/organization/${organizationId}/member`),
@@ -74,7 +88,7 @@ function OrganizationTeam({ organizationId }: { organizationId: string }) {
   });
   const canManage = organization.data?.role === "ADMIN";
   const adminCount = members.data?.filter((member) => member.role === "ADMIN").length ?? 0;
-  const pending = add.isPending || update.isPending;
+  const pending = add.isPending || update.isPending || changePassword.isPending;
   const openAdd = (mode: "existing" | "new") => {
     add.reset();
     form.reset({ username: "", name: "", email: "", password: "", role: "MEMBER", create: mode === "new" });
@@ -112,6 +126,13 @@ function OrganizationTeam({ organizationId }: { organizationId: string }) {
                         {member.role === "ADMIN" ? "Make member" : "Make administrator"}
                       </Button>
                       <Button size="sm" variant="destructive" disabled={pending || lastAdmin} onClick={() => { update.reset(); setChange({ member }); }}>Remove access</Button>
+                      {session.data?.isAdmin && member.role !== "ADMIN" && !member.isAdmin && (
+                        <Button size="sm" variant="outline" disabled={pending} onClick={() => {
+                          changePassword.reset();
+                          passwordForm.reset();
+                          setPasswordMember(member);
+                        }}>Change password</Button>
+                      )}
                     </div>}
                   </TableCell>
                 </TableRow>
@@ -174,6 +195,40 @@ function OrganizationTeam({ organizationId }: { organizationId: string }) {
               {update.isPending ? "Saving…" : change?.role ? "Confirm role change" : "Remove access"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={passwordMember !== null} onOpenChange={(open) => {
+        if (!open && !changePassword.isPending) { setPasswordMember(null); passwordForm.reset(); }
+      }}>
+        <DialogContent showCloseButton={!changePassword.isPending}>
+          <DialogHeader>
+            <DialogTitle>Change password for {passwordMember?.username}</DialogTitle>
+            <DialogDescription>This changes the account login for all organizations and signs out existing sessions. API tokens are unchanged. Share the new password securely. Administrator passwords cannot be changed here.</DialogDescription>
+          </DialogHeader>
+          <Form {...passwordForm}>
+            <form className="flex flex-col gap-4" onSubmit={passwordForm.handleSubmit(({ password }) => {
+              if (passwordMember && !changePassword.isPending) changePassword.mutate({ memberId: passwordMember.id, password });
+            })}>
+              <FormField control={passwordForm.control} name="password" rules={{
+                validate: (value) => {
+                  const bytes = new TextEncoder().encode(value).length;
+                  return (bytes >= 12 && bytes <= 72) || "Use 12–72 bytes";
+                },
+              }} render={({ field }) => (
+                <FormItem><FormLabel>New password</FormLabel><FormControl><Input {...field} type="password" autoComplete="new-password" disabled={changePassword.isPending} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={passwordForm.control} name="confirmation" rules={{
+                validate: (value) => value === passwordForm.getValues("password") || "Passwords must match",
+              }} render={({ field }) => (
+                <FormItem><FormLabel>Confirm password</FormLabel><FormControl><Input {...field} type="password" autoComplete="new-password" disabled={changePassword.isPending} /></FormControl><FormMessage /></FormItem>
+              )} />
+              {changePassword.error && <p role="alert" className="text-destructive">{changePassword.error.message}</p>}
+              <DialogFooter>
+                <Button type="button" variant="outline" disabled={changePassword.isPending} onClick={() => { setPasswordMember(null); passwordForm.reset(); }}>Cancel</Button>
+                <Button type="submit" disabled={changePassword.isPending}>{changePassword.isPending ? "Saving…" : "Save password"}</Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
     </div>

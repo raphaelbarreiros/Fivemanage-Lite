@@ -107,3 +107,31 @@ func (r *handler) removeMemberHandler(c echo.Context) error {
 	}
 	return cc.NoContent(204)
 }
+
+// changePasswordHandler godoc
+// @Summary Change a non-administrator member's password (administrator only)
+// @Tags member
+// @Accept json
+// @Param organizationId path string true "Organization ID"
+// @Param memberId path int true "Membership ID"
+// @Param data body api.ChangeMemberPasswordRequest true "New password"
+// @Success 204
+// @Failure 400 {object} httputil.ErrorResponseData
+// @Failure 403 {object} httputil.ErrorResponseData
+// @Failure 404 {object} httputil.ErrorResponseData
+// @Router /dash/organization/{organizationId}/member/{memberId}/password [patch]
+func (r *handler) changePasswordHandler(c echo.Context) error {
+	cc := c.(*appctx.Context)
+	id, err := strconv.ParseInt(cc.Param("memberId"), 10, 64)
+	if err != nil || id < 1 {
+		return echo.NewHTTPError(400, "Invalid member ID")
+	}
+	var data api.ChangeMemberPasswordRequest
+	if err := validator.BindAndValidate(cc, &data); err != nil {
+		return cc.JSON(400, httputil.ErrorResponse(err.Error()))
+	}
+	if err := r.memberService.ChangePassword(cc.Request().Context(), cc.Param("organizationId"), cc.User().ID, id, data.Password); err != nil {
+		return err
+	}
+	return cc.NoContent(204)
+}

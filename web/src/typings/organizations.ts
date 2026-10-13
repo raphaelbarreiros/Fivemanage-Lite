@@ -19,6 +19,7 @@ export interface OrganizationMember {
   username: string;
   name: string;
   email: string;
+  isAdmin: boolean;
 }
 
 export interface AddOrganizationMember {

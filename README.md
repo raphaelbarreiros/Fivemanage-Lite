@@ -39,6 +39,8 @@ In **Settings**, organization administrators can rename the workspace or delete 
 
 In **Team**, administrators can create real username/password accounts or grant access to an existing username. New accounts require a name, email, and a password of 12–72 bytes. No invitation email is sent: share credentials securely. `ADMIN` manages settings, membership, and destructive dataset operations; `MEMBER` can use files, logs, and API tokens. The last administrator cannot be removed or demoted, including by concurrent requests.
 
+Only instance administrators who also administer the organization can use **Change password** on a non-administrator member in Team. Organization `ADMIN` alone does not authorize changing global account credentials. Enter and confirm a new password of 12–72 UTF-8 bytes. The change applies to the account across all organizations and revokes existing login sessions; API tokens are unchanged. Instance administrators and users holding `ADMIN` in any organization are protected by the API. External-provider accounts must manage their credentials with that provider. The dialog closes and clears both password fields after success; failures leave it open.
+
 Removing a member revokes their organization access and tokens immediately, including cached tokens. Legacy tokens without a creator (`user_id=0`) remain organization-owned and must be revoked separately.
 
 Use **Delete dataset** in the dataset list or log toolbar to remove all stored dataset data. Organization-wide API tokens remain valid for other datasets. Ingestion into a deleted dataset returns 404 until a dataset with that name is created again; deleting `default` also stops ingestion that omits the dataset header.

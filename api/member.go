@@ -7,6 +7,7 @@ type OrganizationMember struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	Name     string `json:"name"`
+	IsAdmin  bool   `json:"isAdmin"`
 }
 
 type AddOrganizationMemberRequest struct {
@@ -20,4 +21,8 @@ type AddOrganizationMemberRequest struct {
 
 type UpdateOrganizationMemberRequest struct {
 	Role string `json:"role" validate:"required,oneof=ADMIN MEMBER"`
+}
+
+type ChangeMemberPasswordRequest struct {
+	Password string `json:"password" validate:"required"`
 }

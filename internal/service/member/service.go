@@ -28,6 +28,7 @@ func publicMember(member *database.OrganizationMember) *api.OrganizationMember {
 		result.Username = member.User.Username
 		result.Email = member.User.Email
 		result.Name = member.User.Name
+		result.IsAdmin = member.User.IsAdmin
 	}
 	return result
 }
@@ -141,6 +142,61 @@ func (s *Service) ChangeAccess(ctx context.Context, organizationID string, actor
 		} else {
 			_, err = tx.NewUpdate().Model(member).Set("role = ?", role).WherePK().Exec(ctx)
 		}
+		return err
+	})
+}
+
+func (s *Service) ChangePassword(ctx context.Context, organizationID string, actorID, memberID int64, password string) error {
+	if len(password) < 12 || len(password) > 72 {
+		return echo.NewHTTPError(400, "Password must contain 12–72 bytes")
+	}
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := organizationquery.Lock(ctx, tx, organizationID, true); err != nil {
+			return err
+		}
+		if err := organizationquery.RequireAdmin(ctx, tx, organizationID, actorID); err != nil {
+			return err
+		}
+		// Organization membership does not authorize changing a global account.
+		actor := new(database.User)
+		if err := tx.NewSelect().Model(actor).Where("id = ?", actorID).For("SHARE").Scan(ctx); err != nil {
+			return err
+		}
+		if !actor.IsAdmin {
+			return echo.NewHTTPError(403, "Only instance administrators can change user passwords")
+		}
+		member := new(database.OrganizationMember)
+		err := tx.NewSelect().Model(member).Where("id = ? AND organization_id = ?", memberID, organizationID).Scan(ctx)
+		if errors.Is(err, sql.ErrNoRows) {
+			return echo.NewHTTPError(404, "Organization member not found")
+		}
+		if err != nil {
+			return err
+		}
+		user := new(database.User)
+		if err := tx.NewSelect().Model(user).Where("id = ?", member.UserID).For("UPDATE").Scan(ctx); err != nil {
+			return err
+		}
+		// A password belongs to the account, not just this organization's membership.
+		admin, err := tx.NewSelect().Model((*database.OrganizationMember)(nil)).
+			Where("user_id = ? AND role = ?", user.ID, "ADMIN").Exists(ctx)
+		if err != nil {
+			return err
+		}
+		if user.IsAdmin || admin {
+			return echo.NewHTTPError(403, "Administrator passwords cannot be changed from Team")
+		}
+		if user.AuthProvider != "" || user.AuthID != "" {
+			return echo.NewHTTPError(400, "This account uses an external login provider")
+		}
+		hash, err := crypt.HashPassword(password)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.NewUpdate().Model(user).Set("password_hash = ?", hash).WherePK().Exec(ctx); err != nil {
+			return err
+		}
+		_, err = tx.NewDelete().Model((*database.Session)(nil)).Where("user_id = ?", user.ID).Exec(ctx)
 		return err
 	})
 }
